@@ -51,10 +51,10 @@ class Model():
                            'efield_cost': 100,
                            'dipole_const': 1,
                            'screening_charge': 0,
-                           'strain_cost': 1,
+                           'strain_cost': 5,
                            'temp_variation': 5,
                            'dipole_electric_field': -3/(4*np.pi),
-                           'surface_charge_cost': 5
+                           'surface_charge_cost': 10
                           }
         for key,value in kwargs.items():
             self.parameters[key] = value
@@ -87,8 +87,18 @@ class Model():
             if not i == dipole_radius and not j == dipole_radius:
                 r = np.sqrt((i-dipole_radius)**2 + (j-dipole_radius)**2)
                 self.rbox[i,j] = 1/r
+        # r2l = 
+        # r3l = l
+        # self.r2box = self.rbox[l-r2l:l+r2l+1] ** 2
+        # self.r3box = self.rbox[l-r3l:l+r3l+1] ** 3
+        # print(l,r2l)
         self.r2box = self.rbox ** 2
-        self.r3box = self.rbox ** 3
+        self.r3box = self.rbox ** 2
+
+        self.rboxf = np.fft.fft2(self.rbox,s=self.shape,norm=None)
+        self.r2boxf = np.fft.fft2(self.r2box,s=self.shape,norm=None)
+        self.r3boxf = np.fft.fft2(self.r3box,s=self.shape,norm=None)
+
 
         self.r = np.zeros(self.shape)
         self.r2 = np.zeros(self.shape)
@@ -109,7 +119,7 @@ class Model():
         field than not
 
         free energy = (t - t0)/(2*C)*P^2 + a4*P^4 + a6*P^6
-                      + aE*E*P + aSCC*DP*P
+                      + aE*E*P + aSCC*DP*P + aS*S*P
         
         P: dipole moment (polarization)
         t: temperature
@@ -120,6 +130,8 @@ class Model():
         aE: energy cost of being polarized in electric field
         DP: depolarization field
         aSCC: energy cost of putting surface charge into a field
+        aS: cost of strain
+        S: strain density
         """
 
         intrinsic_double_well = (temp -self.params['transition_temperature'])*\
@@ -178,12 +190,21 @@ class Model():
         self.data_holder = np.zeros(shape)
     def tick(self):
         #update our convolution boxes
-        self.r = convolve2d(self.dipole_moments,self.rbox,
-                    mode='same',boundary='wrap')
-        self.r2 = convolve2d(self.dipole_moments,self.r2box,
-                    mode='same',boundary='wrap')
-        self.r3 = convolve2d(self.dipole_moments,self.r3box,
-                    mode='same',boundary='wrap')
+        # self.r = convolve2d(self.dipole_moments,self.rbox,
+        #             mode='same',boundary='wrap')
+        # self.r2 = convolve2d(self.dipole_moments,self.r2box,
+        #             mode='same',boundary='wrap')
+        # self.r3 = convolve2d(self.dipole_moments,self.r3box,
+        #             mode='same',boundary='wrap')
+        self.r = np.fft.ifftshift(\
+                        np.fft.ifft2(np.fft.fft2(self.dipole_moments,norm=None)*\
+                        self.rboxf,norm=None))
+        self.r2 = np.fft.ifftshift(\
+                        np.fft.ifft2(np.fft.fft2(self.dipole_moments,norm=None)*\
+                        self.r2boxf,norm=None))
+        self.r3 = np.fft.ifftshift(\
+                        np.fft.ifft2(np.fft.fft2(self.dipole_moments,norm=None)*\
+                        self.r3boxf,norm=None))
         #generate a new change in the moments
         self.moment_delta = np.abs(np.random.normal(0,self.moment_delta_scale))
         #update the temperature
@@ -228,9 +249,9 @@ class Animator():
             self.model.tick()
 
 
-shape = (100,100)
+shape = (201,201)
 delta = 0.01
-radius = 5
+radius = 100
 temp_radius = 3
 
 model = Model()
